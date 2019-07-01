@@ -97,20 +97,31 @@ __webpack_require__(201);
 const repoNameElem = document.querySelector('#repo-name');
 const repoLanguageElem = document.querySelector('#repo-language');
 const repoNameInput$ = rxjs_1.fromEvent(repoNameElem, 'input')
-    .pipe(operators_1.map((event) => event.target.value));
+    .pipe(operators_1.pluck('target', 'value'));
 const repoLanguageInput$ = rxjs_1.fromEvent(repoLanguageElem, 'input')
-    .pipe(operators_1.map((event) => event.target.value), operators_1.startWith(''));
-rxjs_1.combineLatest([repoNameInput$, repoLanguageInput$]).pipe(operators_1.debounceTime(500), operators_1.filter(([repoName, repoLanguage]) => Boolean(repoName)), operators_1.switchMap(([repoName, repoLanguage]) => {
+    .pipe(operators_1.startWith({ target: { value: '' } }), operators_1.pluck('target', 'value'));
+// tslint:disable-next-line:no-any
+searchGithubRepos$(repoNameInput$, repoLanguageInput$).subscribe((repos) => {
+    renderRepoList(repos);
+});
+// tslint:disable-next-line:no-any
+function searchGithubRepos$(name$, language$) {
+    return rxjs_1.combineLatest([name$, language$]).pipe(operators_1.debounceTime(500), operators_1.distinctUntilChanged(([prevRepoName, prevRepoLanguage], [curRepoName, curRepoLanguage]) => {
+        return prevRepoName === curRepoName && prevRepoLanguage === curRepoLanguage;
+    }), operators_1.filter(([repoName, repoLanguage]) => Boolean(repoName)), operators_1.switchMap(([repoName, repoLanguage]) => getGithubRepos(repoName, repoLanguage)), operators_1.pluck('items'));
+}
+// tslint:disable-next-line:no-any
+function getGithubRepos(repoName, repoLanguage) {
     let url = `https://api.github.com/search/repositories?q=${repoName}`;
     if (repoLanguage) {
         url += `+language:${repoLanguage}`;
     }
-    return fetch(url);
-}), operators_1.switchMap((res) => res.json()), operators_1.pluck('items')
+    return fetch(url).then((res) => res.json());
+}
 // tslint:disable-next-line:no-any
-).subscribe((repos) => {
+function renderRepoList(repos) {
     document.querySelector('#repo-list').innerHTML = constructRepoList(repos);
-});
+}
 // tslint:disable-next-line:no-any
 function constructRepoList(repos) {
     let resHtml = '<ul>';
