@@ -6,8 +6,8 @@ import {
 
 import {
     debounceTime,
+    distinctUntilChanged,
     filter,
-    map,
     pluck,
     startWith,
     switchMap
@@ -21,31 +21,46 @@ const repoLanguageElem: HTMLInputElement = document.querySelector('#repo-languag
 
 const repoNameInput$: Observable<string> = fromEvent(repoNameElem, 'input')
     .pipe(
-        map((event: Event) => (event.target as HTMLInputElement).value)
+        pluck('target', 'value')
     );
 
 const repoLanguageInput$: Observable<string> = fromEvent(repoLanguageElem, 'input')
     .pipe(
-        map((event: Event) => (event.target as HTMLInputElement).value),
-        startWith('')
+        startWith({ target: { value: '' } }),
+        pluck('target', 'value')
     );
 
-combineLatest([repoNameInput$, repoLanguageInput$]).pipe(
-    debounceTime(500),
-    filter(([repoName, repoLanguage]: string[]) => Boolean(repoName)),
-    switchMap(([repoName, repoLanguage]: string[]) => {
-        let url: string = `https://api.github.com/search/repositories?q=${repoName}`;
-        if (repoLanguage) {
-            url += `+language:${repoLanguage}`;
-        }
-        return fetch(url);
-    }),
-    switchMap((res: Response) => res.json()),
-    pluck('items')
 // tslint:disable-next-line:no-any
-).subscribe((repos: any[]) => {
-    (document.querySelector('#repo-list') as HTMLDivElement).innerHTML = constructRepoList(repos);
+searchGithubRepos$(repoNameInput$, repoLanguageInput$).subscribe((repos: any[]) => {
+    renderRepoList(repos);
 });
+
+// tslint:disable-next-line:no-any
+function searchGithubRepos$(name$: Observable<string>, language$: Observable<string>): Observable<any[]> {
+    return combineLatest([name$, language$]).pipe(
+        debounceTime(500),
+        distinctUntilChanged(([prevRepoName, prevRepoLanguage]: string[], [curRepoName, curRepoLanguage]: string[]) => {
+            return prevRepoName === curRepoName && prevRepoLanguage === curRepoLanguage;
+        }),
+        filter(([repoName, repoLanguage]: string[]) => Boolean(repoName)),
+        switchMap(([repoName, repoLanguage]: string[]) => getGithubRepos(repoName, repoLanguage)),
+        pluck('items')
+    );
+}
+
+// tslint:disable-next-line:no-any
+function getGithubRepos(repoName: string, repoLanguage: string): Promise<any> {
+    let url: string = `https://api.github.com/search/repositories?q=${repoName}`;
+    if (repoLanguage) {
+        url += `+language:${repoLanguage}`;
+    }
+    return fetch(url).then((res: Response) => res.json());
+}
+
+// tslint:disable-next-line:no-any
+function renderRepoList(repos: any[]): void {
+    (document.querySelector('#repo-list') as HTMLDivElement).innerHTML = constructRepoList(repos);
+}
 
 // tslint:disable-next-line:no-any
 function constructRepoList(repos: any[]): string {
